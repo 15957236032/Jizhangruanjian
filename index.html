@@ -126,11 +126,30 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .row2{display:flex;gap:10px}.row2 .field{flex:1}
 .transfer-ico{text-align:center;color:var(--muted);margin:2px 0 8px;font-size:18px}
 /* 账户筛选条 */
+.search-box{padding:8px 16px 0}
+.search-box input{width:100%;border:none;background:var(--card);border-radius:14px;padding:10px 14px;
+  font-size:14px;outline:none;box-shadow:0 1px 4px rgba(0,0,0,.04);-webkit-appearance:none}
 .filter-bar{display:flex;gap:8px;overflow-x:auto;padding:10px 16px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .filter-bar::-webkit-scrollbar{display:none}
 .fchip{flex-shrink:0;border:none;background:var(--card);color:var(--muted);font-size:13px;
   padding:7px 13px;border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.04);white-space:nowrap}
 .fchip.active{background:var(--primary);color:#fff;font-weight:600}
+
+/* 日历 */
+.cal-head{font-size:15px;font-weight:600;margin-bottom:10px;display:flex;flex-direction:column;gap:2px}
+.cal-sum{font-size:12px;color:var(--muted);font-weight:400}
+.cal-week{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:11px;color:var(--muted);margin-bottom:6px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-cell{min-height:52px;background:#f7f8fa;border-radius:8px;padding:3px 4px;font-size:10px;overflow:hidden}
+.cal-cell.empty{background:transparent}
+.cal-cell.today{box-shadow:inset 0 0 0 2px var(--primary)}
+.cal-cell.sel{background:var(--primary-light)}
+.cd-d{font-weight:600;color:var(--text);font-size:11px}
+.cal-cell.today .cd-d{color:var(--primary)}
+.cd-exp{color:#e02020;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-inc{color:var(--green);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cd-none{color:#ccc;font-size:9px}
+.cal-tip{margin-top:10px;font-size:11px;color:var(--muted);text-align:center}
 
 /* 备份提醒条 */
 .backup-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -196,13 +215,19 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 
 <div class="tabs">
   <button class="active" onclick="switchTab('list',this)">明细</button>
+  <button onclick="switchTab('cal',this)">日历</button>
   <button onclick="switchTab('stats',this)">统计</button>
   <button onclick="switchTab('accs',this)">账户</button>
 </div>
 
 <div class="filter-bar" id="filterBar"></div>
+<div class="search-box"><input type="search" id="searchInput" placeholder="🔍 搜索备注/分类/账户/金额/日期" oninput="onSearch(this.value)"></div>
 
 <div id="page-list" class="page active"></div>
+<div id="page-cal" class="page">
+  <div class="chart-card" id="calWrap"></div>
+  <div id="calDayDetail"></div>
+</div>
 <div id="page-stats" class="page">
   <div class="stat-cards">
     <div class="c"><div class="l">收入</div><div class="v inc" id="sInc">0.00</div></div>
@@ -265,7 +290,7 @@ const ACCOUNTS = [
 ];
 const CATS = {
   expense:[["餐饮","🍜"],["交通","🚇"],["生活缴费","💡"],["居住","🏠"],["购物","🛍️"],
-           ["医疗","💊"],["宠物","🐾"],["儿童","🧒"],["浮亏","📉"],["调整及其他","📦"]],
+           ["医疗","💊"],["娱乐","🎮"],["宠物","🐾"],["儿童","🧒"],["浮亏","📉"],["调整及其他","📦"]],
   income:[["工资","💰"],["奖金","🎁"],["补贴","🧧"],["理财收入","📈"],["浮盈","💹"],["调整","🔧"],["其他","✨"]]
 };
 let records = JSON.parse(localStorage.getItem("jz_records")||"null");
@@ -320,6 +345,28 @@ function periodRecords(){
 }
 /* 账户筛选 */
 let accFilter="all";
+/* 全局搜索 */
+let searchQ="";
+function onSearch(v){
+  searchQ=v.trim();
+  render();
+}
+function searchRecords(){
+  const kw=searchQ.toLowerCase();
+  let list=records.filter(r=>{
+    if(r.type==="transfer"){
+      return (r.note||"").toLowerCase().includes(kw)||(r.from||"").toLowerCase().includes(kw)||(r.to||"").toLowerCase().includes(kw)||String(r.amount).includes(kw)||r.date.includes(kw);
+    }
+    return (r.note||"").toLowerCase().includes(kw)||(r.cat||"").toLowerCase().includes(kw)||(r.account||"").toLowerCase().includes(kw)||String(r.amount).includes(kw)||r.date.includes(kw);
+  }).sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
+  if(accFilter!=="all"){
+    list=list.filter(r=>{
+      if(r.type==="transfer")return r.from===accFilter||r.to===accFilter;
+      return r.account===accFilter;
+    });
+  }
+  return list;
+}
 function filteredRecords(){
   const list=periodRecords();
   if(accFilter==="all")return list;
@@ -351,7 +398,8 @@ function render(){
     period==="month"?`${y}年${m}月`:period==="year"?`${y}年`:"自定义区间";
   document.getElementById("periodNav").style.visibility = period==="range"?"hidden":"visible";
   document.getElementById("rangeBox").classList.toggle("show",period==="range");
-  const list=filteredRecords();
+  const list=searchQ?searchRecords():filteredRecords();
+  const searching=!!searchQ;
   const inc=list.filter(r=>r.type==="income").reduce((s,r)=>s+r.amount,0);
   const exp=list.filter(r=>r.type==="expense").reduce((s,r)=>s+r.amount,0);
   const trIn=list.filter(r=>r.type==="transfer").reduce((s,r)=>s+r.amount,0);
@@ -359,11 +407,85 @@ function render(){
   document.getElementById("pInc").textContent=fmt(inc);
   document.getElementById("pExp").textContent=fmt(exp);
   document.getElementById("pTr").textContent=fmt(trIn);
+  // 搜索模式提示
+  const hdr=document.querySelector(".header h1");
+  hdr.textContent=searching?`搜索「${searchQ}」· ${list.length} 条结果`:"轻记账";
   renderFilterBar();
   renderList(list);renderStats(list);renderAccounts();
 }
 
 /* 账户筛选条 */
+/* ============ 日历 ============ */
+let selDay=null;
+function renderCalendar(){
+  const y=pDate.getFullYear(),m=pDate.getMonth();
+  const ym=`${y}-${String(m+1).padStart(2,"0")}`;
+  // 该月每天收支
+  const days={};
+  records.forEach(r=>{
+    if(!r.date.startsWith(ym))return;
+    const d=+r.date.slice(8,10);
+    const o=days[d]||(days[d]={inc:0,exp:0,n:0});
+    if(r.type==="expense")o.exp+=r.amount;
+    else if(r.type==="income")o.inc+=r.amount;
+    else o.n++; // 转账只计数
+  });
+  const first=new Date(y,m,1).getDay(); // 0=周日
+  const dim=new Date(y,m+1,0).getDate();
+  const todayStr=today();
+  let cells="";
+  for(let i=0;i<first;i++)cells+=`<div class="cal-cell empty"></div>`;
+  for(let d=1;d<=dim;d++){
+    const o=days[d]||{inc:0,exp:0,n:0};
+    const ds=`${ym}-${String(d).padStart(2,"0")}`;
+    const isToday=ds===todayStr;
+    const isSel=selDay===ds;
+    let marks="";
+    if(o.exp>0)marks+=`<div class="cd-exp">-${fmt(o.exp)}</div>`;
+    if(o.inc>0)marks+=`<div class="cd-inc">+${fmt(o.inc)}</div>`;
+    if(o.inc===0&&o.exp===0)marks+=`<div class="cd-none">${o.n?"转":"·"}</div>`;
+    cells+=`<div class="cal-cell ${isToday?"today":""} ${isSel?"sel":""}" onclick="selectDay('${ds}')">
+      <div class="cd-d">${d}${isToday?"今":""}</div>${marks}</div>`;
+  }
+  // 月汇总
+  let mExp=0,mInc=0;
+  Object.values(days).forEach(o=>{mExp+=o.exp;mInc+=o.inc;});
+  document.getElementById("calWrap").innerHTML=
+    `<div class="cal-head">${y}年${m+1}月<span class="cal-sum">支出 ¥${fmt(mExp)} · 收入 ¥${fmt(mInc)}</span></div>
+     <div class="cal-week">${["日","一","二","三","四","五","六"].map(w=>`<div>${w}</div>`).join("")}</div>
+     <div class="cal-grid">${cells}</div>
+     <div class="cal-tip">点某天可看当日明细 · 红=支出 绿=收入</div>`;
+}
+function selectDay(ds){
+  selDay=(selDay===ds)?null:ds;
+  renderCalendar();
+  const box=document.getElementById("calDayDetail");
+  if(!selDay){box.innerHTML="";return;}
+  const items=records.filter(r=>r.date===ds).sort((a,b)=>b.ts-a.ts);
+  if(!items.length){box.innerHTML=`<div class="chart-card"><div class="empty" style="padding:24px 0">当天没有记录</div></div>`;return;}
+  const dExp=items.filter(r=>r.type==="expense").reduce((s,r)=>s+r.amount,0);
+  const dInc=items.filter(r=>r.type==="income").reduce((s,r)=>s+r.amount,0);
+  box.innerHTML=`<div class="chart-card">
+    <div class="day-head" style="padding-top:0">${ds.slice(5).replace("-","月")}日
+      <span class="dh-exp">支出 ¥${fmt(dExp)}</span><span class="dh-inc">收入 ¥${fmt(dInc)}</span></div>
+    ${items.map(r=>{
+      let inner;
+      if(r.type==="transfer"){
+        inner=`<div class="emoji">🔄</div><div class="info"><div class="cat">${r.from||"?"}>${r.to||"?"}</div><div class="note">${r.note||"账户互转"}</div></div>
+          <div class="amt transfer">¥${fmt(r.amount)}<span class="acc">转账</span></div>`;
+      }else{
+        const c=CATS[r.type].find(c=>c[0]===r.cat)||["其他","📦"];
+        inner=`<div class="emoji">${c[1]}</div><div class="info"><div class="cat">${r.cat}</div><div class="note">${r.note||""}</div></div>
+          <div class="amt ${r.type}">${r.type==="expense"?"-":"+"}¥${fmt(r.amount)}<span class="acc">${r.account}</span></div>`;
+      }
+      return `<div class="swipe-wrap" data-id="${r.id}" style="margin-bottom:8px">
+        <button class="swipe-act edit" onclick="event.stopPropagation();editRecord(${r.id})"><span class="i">✏️</span>编辑</button>
+        <button class="swipe-act del" onclick="event.stopPropagation();delRecord(${r.id})"><span class="i">🗑</span>删除</button>
+        <div class="record">${inner}</div></div>`;
+    }).join("")}</div>`;
+  initSwipe(document.getElementById("calDayDetail"));
+}
+
 function renderFilterBar(){
   const bar=document.getElementById("filterBar");
   const all=`<button class="fchip ${accFilter==="all"?"active":""}" onclick="setAccFilter('all')">全部账户</button>`;
@@ -764,6 +886,8 @@ function switchTab(p,btn){
   document.querySelectorAll(".page").forEach(el=>el.classList.remove("active"));
   document.getElementById("page-"+p).classList.add("active");
   document.getElementById("filterBar").style.display = p==="list"?"flex":"none";
+  document.querySelector(".search-box").style.display = p==="list"?"block":"none";
+  if(p==="cal")renderCalendar();
   if(p==="stats")renderStats(filteredRecords());
 }
 function showToast(msg){
