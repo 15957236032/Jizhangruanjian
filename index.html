@@ -125,6 +125,14 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .sheet .btn:active{opacity:.9}
 .row2{display:flex;gap:10px}.row2 .field{flex:1}
 .transfer-ico{text-align:center;color:var(--muted);margin:2px 0 8px;font-size:18px}
+/* 备份提醒条 */
+.backup-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin:12px 16px 0;background:#fff8e6;border:1px solid #ffe0a3;border-radius:14px;
+  padding:10px 12px;font-size:13px;color:#8a5a00}
+.bb-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.bb-btn{border:none;background:var(--primary);color:#fff;font-size:12px;font-weight:600;
+  padding:6px 12px;border-radius:10px}
+.bb-close{border:none;background:none;color:#b08a4a;font-size:14px;padding:4px}
 /* 详情弹窗 */
 .detail-card{background:var(--card);border-radius:20px;padding:20px;width:86%;max-width:400px;animation:up .25s}
 .detail-card h3{font-size:15px;margin-bottom:14px;text-align:center}
@@ -168,6 +176,14 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
   <div class="row2">
     <div class="field"><label>开始日期</label><input type="date" id="rangeStart" onchange="render()"></div>
     <div class="field"><label>结束日期</label><input type="date" id="rangeEnd" onchange="render()"></div>
+  </div>
+</div>
+
+<div class="backup-banner" id="backupBanner" style="display:none">
+  <span>💾 <b id="backupBannerText">本月还没备份</b></span>
+  <div class="bb-actions">
+    <button class="bb-btn" onclick="exportJSON()">立即备份</button>
+    <button class="bb-close" onclick="dismissBackupBanner()">✕</button>
   </div>
 </div>
 
@@ -503,10 +519,40 @@ function exportJSON(){
   const a=document.createElement("a");
   a.href=url;
   const d=new Date();
-  a.download=`轻记账备份_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}.json`;
+  const ym=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}`;
+  a.download=`轻记账备份_${ym}.json`;
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),5000);
+  // 记录本月已备份
+  localStorage.setItem("jz_last_backup",ym);
+  updateBackupBanner();
   showToast("JSON 已导出 ✓");
+}
+
+/* ===== 月度备份提醒 ===== */
+function currentYM(){
+  const d=new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}`;
+}
+function updateBackupBanner(){
+  const bar=document.getElementById("backupBanner");
+  if(!bar)return;
+  const last=localStorage.getItem("jz_last_backup");
+  const cur=currentYM();
+  if(last===cur){
+    bar.style.display="none";
+  }else{
+    const d=new Date();
+    bar.style.display="flex";
+    document.getElementById("backupBannerText").textContent =
+      last ? `本月（${d.getFullYear()}年${d.getMonth()+1}月）还没备份` : "还没有备份过数据";
+  }
+}
+function dismissBackupBanner(){
+  const bar=document.getElementById("backupBanner");
+  // 只隐藏本次会话，下次打开仍提醒
+  sessionStorage.setItem("jz_banner_hidden","1");
+  bar.style.display="none";
 }
 function importJSON(){
   const input=document.createElement("input");
@@ -692,6 +738,11 @@ function showToast(msg){
 
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 render();
+updateBackupBanner();
+if(sessionStorage.getItem("jz_banner_hidden")==="1"){
+  const _bb=document.getElementById("backupBanner");
+  if(_bb)_bb.style.display="none";
+}
 </script>
 </body>
 </html>
