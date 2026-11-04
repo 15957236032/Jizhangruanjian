@@ -131,6 +131,10 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .d-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f2f3f5;font-size:14px}
 .d-row span{color:var(--muted)}
 .d-note{margin:14px 0;background:#f7f8fa;border-radius:12px;padding:12px;font-size:14px;line-height:1.6;word-break:break-all}
+.io-panel{background:var(--card);border-radius:var(--radius);padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.io-panel .export-btn{margin-bottom:10px}
+.io-panel .row2{margin-bottom:10px}
+.io-panel .row2:last-child{margin-bottom:0}
 .export-btn{width:100%;border:2px dashed var(--primary);background:var(--primary-light);color:var(--primary);
   font-size:14px;font-weight:600;padding:12px;border-radius:var(--radius);margin-bottom:12px}
 .export-btn:active{opacity:.8}
@@ -248,7 +252,6 @@ if(localStorage.getItem("jz_version")!=="2"){
   records.forEach(r=>{
     if(r.cat==="互转出"){r.cat="调整及其他";}
     else if(r.cat==="互转入"){r.cat="其他";}
-    else if((r.get||"")&&false){}
     const note=r.note||"";
     if(r.type==="income"&&note.indexOf("浮盈")>-1&&r.cat!=="浮盈"){r.cat="浮盈";}
     else if(r.type==="expense"&&note.indexOf("浮亏")>-1&&r.cat!=="浮亏"){r.cat="浮亏";}
@@ -256,6 +259,15 @@ if(localStorage.getItem("jz_version")!=="2"){
   localStorage.setItem("jz_records",JSON.stringify(records));
   localStorage.setItem("jz_version","2");
 }
+
+/* URL 参数：?add=1 自动打开记一笔 */
+(function(){
+  const q=new URLSearchParams(location.search);
+  if(q.get("add")){
+    setTimeout(()=>{openSheet();},300);
+    history.replaceState(null,"",location.pathname);
+  }
+})();
 let period = "month", pDate = new Date();
 
 function save(){localStorage.setItem("jz_records",JSON.stringify(records));}
@@ -457,8 +469,7 @@ function renderAccounts(){
   const b=balances();
   const net=Object.values(b).reduce((s,v)=>s+ (ACCOUNTS.find(a=>a.name===Object.keys(b).find(k=>b[k]===v))?.type==="credit"?0:0),0);
   const page=document.getElementById("page-accs");
-  page.innerHTML=`<button class="export-btn" onclick="exportNumbers()">📤 导出为 Numbers 文件</button>
-    <button class="export-btn" style="border-color:#bbb;background:#fff;color:var(--muted)" onclick="exportCSV()">📄 导出 CSV（离线备用）</button>`+ACCOUNTS.map(a=>{
+  page.innerHTML=ACCOUNTS.map(a=>{
     const v=b[a.name];
     const colorClass=v<0?"neg":"pos";
     const bg=a.type==="credit"?"#fdeeee":a.type==="liability"?"#fff7e6":"var(--primary-light)";
@@ -467,15 +478,58 @@ function renderAccounts(){
       <div class="info"><div class="n">${a.name}</div>
       <div class="t">${a.type==="credit"?"信用卡（负数=待还）":a.type==="liability"?"负债（负数=未还）":"资产账户 · 点击设期初"}</div></div>
       <div class="bal ${colorClass}">¥${fmt(v)}</div></div>`;
-  }).join("")+`<div class="acc-item" style="background:var(--primary-light)"><div class="emoji" style="background:#fff">Σ</div>
+  }).join("")+`<div class="acc-item" style="background:var(--primary-light);margin-bottom:16px"><div class="emoji" style="background:#fff">Σ</div>
     <div class="info"><div class="n">净资产合计</div><div class="t">资产 − 信用卡待还 − 借入</div></div>
-    <div class="bal ${netTotal(b)<0?"neg":"pos"}">¥${fmt(netTotal(b))}</div></div>`;
+    <div class="bal ${netTotal(b)<0?"neg":"pos"}">¥${fmt(netTotal(b))}</div></div>
+    <div class="io-panel">
+      <button class="export-btn" onclick="exportNumbers()">📤 导出为 Numbers 文件</button>
+      <button class="export-btn" style="border-color:#bbb;background:#fff;color:var(--muted)" onclick="exportCSV()">📄 导出 CSV（离线备用）</button>
+      <div class="row2">
+        <button class="export-btn" style="margin:0" onclick="exportJSON()">💾 导出 JSON</button>
+        <button class="export-btn" style="margin:0;border-color:#3a7afe;background:#eef3ff;color:#3a7afe" onclick="importJSON()">📥 导入 JSON</button>
+      </div>
+    </div>`;
 }
 function netTotal(b){
   let s=0;ACCOUNTS.forEach(a=>{
     if(a.type==="asset")s+=b[a.name];
     else s+=b[a.name]; // credit/liability 余额为负已计入
   });return s;
+}
+function exportJSON(){
+  const payload={version:2,exportedAt:new Date().toISOString(),records:records,initials:initials};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  const d=new Date();
+  a.download=`轻记账备份_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}.json`;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  showToast("JSON 已导出 ✓");
+}
+function importJSON(){
+  const input=document.createElement("input");
+  input.type="file";input.accept=".json,application/json";
+  input.onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(!data.records||!Array.isArray(data.records))throw new Error("缺少 records");
+        if(!confirm(`将导入 ${data.records.length} 条记录，覆盖当前全部数据。\n当前有 ${records.length} 条，确定继续？`))return;
+        records=data.records;
+        initials=data.initials||initials;
+        localStorage.setItem("jz_records",JSON.stringify(records));
+        localStorage.setItem("jz_initials",JSON.stringify(initials));
+        localStorage.setItem("jz_version","2");
+        render();showToast(`已导入 ${records.length} 条 ✓`);
+      }catch(err){showToast("导入失败：文件格式不正确");}
+    };
+    reader.readAsText(f);
+  };
+  input.click();
 }
 async function exportNumbers(){
   showToast("正在生成 Numbers 文件…");
