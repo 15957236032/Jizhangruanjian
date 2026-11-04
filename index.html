@@ -125,6 +125,13 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .sheet .btn:active{opacity:.9}
 .row2{display:flex;gap:10px}.row2 .field{flex:1}
 .transfer-ico{text-align:center;color:var(--muted);margin:2px 0 8px;font-size:18px}
+/* 账户筛选条 */
+.filter-bar{display:flex;gap:8px;overflow-x:auto;padding:10px 16px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.filter-bar::-webkit-scrollbar{display:none}
+.fchip{flex-shrink:0;border:none;background:var(--card);color:var(--muted);font-size:13px;
+  padding:7px 13px;border-radius:20px;box-shadow:0 1px 4px rgba(0,0,0,.04);white-space:nowrap}
+.fchip.active{background:var(--primary);color:#fff;font-weight:600}
+
 /* 备份提醒条 */
 .backup-banner{display:flex;align-items:center;justify-content:space-between;gap:10px;
   margin:12px 16px 0;background:#fff8e6;border:1px solid #ffe0a3;border-radius:14px;
@@ -192,6 +199,8 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
   <button onclick="switchTab('stats',this)">统计</button>
   <button onclick="switchTab('accs',this)">账户</button>
 </div>
+
+<div class="filter-bar" id="filterBar"></div>
 
 <div id="page-list" class="page active"></div>
 <div id="page-stats" class="page">
@@ -309,6 +318,16 @@ function periodRecords(){
   const [s,e]=periodRange();
   return records.filter(r=>r.date>=s&&r.date<=e).sort((a,b)=>b.date.localeCompare(a.date)||b.ts-a.ts);
 }
+/* 账户筛选 */
+let accFilter="all";
+function filteredRecords(){
+  const list=periodRecords();
+  if(accFilter==="all")return list;
+  return list.filter(r=>{
+    if(r.type==="transfer")return r.from===accFilter||r.to===accFilter;
+    return r.account===accFilter;
+  });
+}
 
 /* 余额（全部历史） */
 function balances(){
@@ -332,7 +351,7 @@ function render(){
     period==="month"?`${y}年${m}月`:period==="year"?`${y}年`:"自定义区间";
   document.getElementById("periodNav").style.visibility = period==="range"?"hidden":"visible";
   document.getElementById("rangeBox").classList.toggle("show",period==="range");
-  const list=periodRecords();
+  const list=filteredRecords();
   const inc=list.filter(r=>r.type==="income").reduce((s,r)=>s+r.amount,0);
   const exp=list.filter(r=>r.type==="expense").reduce((s,r)=>s+r.amount,0);
   const trIn=list.filter(r=>r.type==="transfer").reduce((s,r)=>s+r.amount,0);
@@ -340,7 +359,23 @@ function render(){
   document.getElementById("pInc").textContent=fmt(inc);
   document.getElementById("pExp").textContent=fmt(exp);
   document.getElementById("pTr").textContent=fmt(trIn);
+  renderFilterBar();
   renderList(list);renderStats(list);renderAccounts();
+}
+
+/* 账户筛选条 */
+function renderFilterBar(){
+  const bar=document.getElementById("filterBar");
+  const all=`<button class="fchip ${accFilter==="all"?"active":""}" onclick="setAccFilter('all')">全部账户</button>`;
+  const items=ACCOUNTS.map(a=>{
+    const label=accFilter===a.name?`${a.e} ${a.name}`:`${a.e} ${a.name}`;
+    return `<button class="fchip ${accFilter===a.name?"active":""}" onclick="setAccFilter('${a.name}')">${label}</button>`;
+  }).join("");
+  bar.innerHTML=all+items;
+}
+function setAccFilter(name){
+  accFilter=name;
+  render();
 }
 
 function renderList(list){
@@ -728,7 +763,8 @@ function switchTab(p,btn){
   btn.classList.add("active");
   document.querySelectorAll(".page").forEach(el=>el.classList.remove("active"));
   document.getElementById("page-"+p).classList.add("active");
-  if(p==="stats")renderStats(periodRecords());
+  document.getElementById("filterBar").style.display = p==="list"?"flex":"none";
+  if(p==="stats")renderStats(filteredRecords());
 }
 function showToast(msg){
   const t=document.getElementById("toast");
