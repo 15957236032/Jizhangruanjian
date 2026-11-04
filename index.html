@@ -42,8 +42,20 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .page{padding:14px 16px;display:none}.page.active{display:block}
 /* 明细 */
 .day-head{font-size:12px;color:var(--muted);padding:8px 4px 6px}
-.record{background:var(--card);border-radius:var(--radius);display:flex;align-items:center;
-  padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.record{
+  background:var(--card);border-radius:var(--radius);display:flex;align-items:center;
+  padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.04);
+}
+/* 左滑删除 */
+.swipe-wrap{position:relative;overflow:hidden;border-radius:var(--radius);margin-bottom:8px}
+.swipe-wrap .record{margin-bottom:0;position:relative;z-index:2;transition:transform .22s ease;width:100%}
+.swipe-wrap.open .record{transform:translateX(-84px)}
+.swipe-del{
+  position:absolute;right:0;top:0;bottom:0;width:84px;background:#e64340;color:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  border:none;font-size:12px;font-weight:600;z-index:1;
+}
+.swipe-del .i{font-size:18px}
 .record .emoji{width:38px;height:38px;border-radius:12px;background:var(--primary-light);
   display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:11px;flex-shrink:0}
 .record .info{flex:1;min-width:0}
@@ -278,24 +290,83 @@ function renderList(list){
     const dExp=items.filter(r=>r.type==="expense").reduce((s,r)=>s+r.amount,0);
     return `<div class="day-group"><div class="day-head">${date.slice(5).replace("-","月")}日 · 支出 ¥${fmt(dExp)}</div>
     ${items.map(r=>{
+      let inner;
       if(r.type==="transfer"){
         const dir=r.from?`转出 · ${r.from}`:`转入 · ${r.to}`;
-        return `<div class="record" data-id="${r.id}"><div class="emoji">${r.from?"📤":"📥"}</div>
+        inner=`<div class="emoji">${r.from?"📤":"📥"}</div>
           <div class="info"><div class="cat">${dir}</div><div class="note">${r.note||"账户互转"}</div></div>
-          <div class="amt transfer">${r.from?"-":"+"}¥${fmt(r.amount)}<span class="acc">转账</span></div></div>`;
+          <div class="amt transfer">${r.from?"-":"+"}¥${fmt(r.amount)}<span class="acc">转账</span></div>`;
+      }else{
+        const c=CATS[r.type].find(c=>c[0]===r.cat)||["其他","📦"];
+        inner=`<div class="emoji">${c[1]}</div>
+          <div class="info"><div class="cat">${r.cat}</div><div class="note">${r.note||""}</div></div>
+          <div class="amt ${r.type}">${r.type==="expense"?"-":"+"}¥${fmt(r.amount)}<span class="acc">${r.account}</span></div>`;
       }
-      const c=CATS[r.type].find(c=>c[0]===r.cat)||["其他","📦"];
-      return `<div class="record" data-id="${r.id}"><div class="emoji">${c[1]}</div>
-        <div class="info"><div class="cat">${r.cat}</div><div class="note">${r.note||""}</div></div>
-        <div class="amt ${r.type}">${r.type==="expense"?"-":"+"}¥${fmt(r.amount)}<span class="acc">${r.account}</span></div></div>`;
+      return `<div class="swipe-wrap" data-id="${r.id}">
+        <button class="swipe-del" onclick="event.stopPropagation();delRecord(${r.id})"><span class="i">🗑</span>删除</button>
+        <div class="record">${inner}</div></div>`;
     }).join("")}</div>`;
   }).join("");
-  page.querySelectorAll(".record").forEach(el=>{
-    let tm=null;
-    el.addEventListener("touchstart",()=>{tm=setTimeout(()=>delRecord(+el.dataset.id),600);},{passive:true});
-    el.addEventListener("touchend",()=>clearTimeout(tm));
-    el.addEventListener("contextmenu",e=>{e.preventDefault();delRecord(+el.dataset.id);});
+  initSwipe(page);
+}
+
+/* 左滑删除手势 */
+function initSwipe(page){
+  const wraps=[...page.querySelectorAll(".swipe-wrap")];
+  wraps.forEach(wrap=>{
+    const content=wrap.querySelector(".record");
+    let startX=0,startY=0,dx=0,dragging=false,lockDir=null;
+
+    const onStart=e=>{
+      const t=e.touches[0];
+      startX=t.clientX;startY=t.clientY;dx=0;dragging=true;lockDir=null;
+      content.style.transition="none";
+    };
+    const onMove=e=>{
+      if(!dragging)return;
+      const t=e.touches[0];
+      const mx=t.clientX-startX, my=t.clientY-startY;
+      if(lockDir===null){
+        if(Math.abs(mx)<6&&Math.abs(my)<6)return;
+        lockDir = Math.abs(mx)>Math.abs(my)?"x":"y";
+        if(lockDir==="y"){dragging=false;content.style.transition="";return;}
+      }
+      if(lockDir!=="x")return;
+      e.preventDefault();
+      const isOpen=wrap.classList.contains("open");
+      let base=isOpen?-84:0;
+      dx=Math.max(-100,Math.min(0,base+mx));
+      content.style.transform=`translateX(${dx}px)`;
+    };
+    const onEnd=()=>{
+      if(!dragging){content.style.transition="";return;}
+      dragging=false;
+      content.style.transition="transform .22s ease";
+      const isOpen=wrap.classList.contains("open");
+      let shouldOpen = isOpen ? dx < -40 : dx < -40;
+      // 关闭其他已展开项
+      wraps.forEach(w=>{if(w!==wrap&&w.classList.contains("open")){
+        w.classList.remove("open");w.querySelector(".record").style.transform="";}});
+      wrap.classList.toggle("open",shouldOpen);
+      content.style.transform=shouldOpen?"translateX(-84px)":"";
+    };
+    content.addEventListener("touchstart",onStart,{passive:true});
+    content.addEventListener("touchmove",onMove,{passive:false});
+    content.addEventListener("touchend",onEnd);
+    content.addEventListener("touchcancel",onEnd);
+    // 已展开时点击内容 -> 收起
+    content.addEventListener("click",()=>{
+      if(wrap.classList.contains("open")){
+        wrap.classList.remove("open");content.style.transform="";
+      }
+    });
   });
+  // 点击空白收起
+  const closeAll=e=>{
+    if(e.target.closest(".swipe-wrap"))return;
+    wraps.forEach(w=>{w.classList.remove("open");w.querySelector(".record").style.transform="";});
+  };
+  document.addEventListener("click",closeAll);
 }
 
 function bars(container,entries,color,showPct){
