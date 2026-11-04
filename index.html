@@ -41,7 +41,9 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .tabs button.active{color:var(--primary);font-weight:600;background:var(--primary-light)}
 .page{padding:14px 16px;display:none}.page.active{display:block}
 /* 明细 */
-.day-head{font-size:12px;color:var(--muted);padding:8px 4px 6px}
+.day-head{font-size:12px;color:var(--muted);padding:8px 4px 6px;display:flex;align-items:center;gap:10px}
+.dh-exp{color:#e02020;opacity:.9}
+.dh-inc{color:var(--green);opacity:.85}
 .record{
   background:var(--card);border-radius:var(--radius);display:flex;align-items:center;
   padding:12px 14px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,.04);
@@ -49,20 +51,24 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 /* 左滑删除 */
 .swipe-wrap{position:relative;overflow:hidden;border-radius:var(--radius);margin-bottom:8px}
 .swipe-wrap .record{margin-bottom:0;position:relative;z-index:2;transition:transform .22s ease;width:100%}
-.swipe-wrap.open .record{transform:translateX(-84px)}
-.swipe-del{
-  position:absolute;right:0;top:0;bottom:0;width:84px;background:#e64340;color:#fff;
+.swipe-wrap.open .record{transform:translateX(-160px)}
+.swipe-act{
+  position:absolute;right:0;top:0;bottom:0;width:80px;color:#fff;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
   border:none;font-size:12px;font-weight:600;z-index:1;
 }
-.swipe-del .i{font-size:18px}
+.swipe-act.edit{right:80px;background:#3a7afe}
+.swipe-act.del{background:#e64340}
+.swipe-act .i{font-size:18px}
 .record .emoji{width:38px;height:38px;border-radius:12px;background:var(--primary-light);
   display:flex;align-items:center;justify-content:center;font-size:18px;margin-right:11px;flex-shrink:0}
 .record .info{flex:1;min-width:0}
 .record .info .cat{font-size:15px;font-weight:500}
 .record .info .note{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .record .amt{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;text-align:right}
-.amt.income{color:var(--green)}.amt.transfer{color:#3a7afe}
+.amt.expense{color:#e02020}
+.amt.income{color:var(--green)}
+.amt.transfer{color:#3a7afe}
 .amt .acc{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
 .empty{text-align:center;color:var(--muted);padding:50px 0;font-size:14px;line-height:1.8}
 /* 账户 */
@@ -119,6 +125,12 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 .sheet .btn:active{opacity:.9}
 .row2{display:flex;gap:10px}.row2 .field{flex:1}
 .transfer-ico{text-align:center;color:var(--muted);margin:2px 0 8px;font-size:18px}
+/* 详情弹窗 */
+.detail-card{background:var(--card);border-radius:20px;padding:20px;width:86%;max-width:400px;animation:up .25s}
+.detail-card h3{font-size:15px;margin-bottom:14px;text-align:center}
+.d-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f2f3f5;font-size:14px}
+.d-row span{color:var(--muted)}
+.d-note{margin:14px 0;background:#f7f8fa;border-radius:12px;padding:12px;font-size:14px;line-height:1.6;word-break:break-all}
 .export-btn{width:100%;border:2px dashed var(--primary);background:var(--primary-light);color:var(--primary);
   font-size:14px;font-weight:600;padding:12px;border-radius:var(--radius);margin-bottom:12px}
 .export-btn:active{opacity:.8}
@@ -135,7 +147,7 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 <div class="header">
   <h1>轻记账</h1>
   <div class="net-row"><span class="label">期间结余</span><div class="num"><small>¥</small><span id="netVal">0.00</span></div></div>
-  <div class="sub-row"><span>收入 <b id="pInc">0.00</b></span><span>支出 <b id="pExp">0.00</b></span><span>转入 <b id="pTr">0.00</b></span></div>
+  <div class="sub-row"><span>收入 <b id="pInc">0.00</b></span><span>支出 <b id="pExp">0.00</b></span><span>转账 <b id="pTr">0.00</b></span></div>
 </div>
 
 <div class="period">
@@ -202,6 +214,14 @@ body{font-family:-apple-system,"PingFang SC",sans-serif;background:var(--bg);col
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="mask" id="detailMask" style="align-items:center" onclick="if(event.target===this)hideDetail()">
+  <div class="detail-card">
+    <h3>记录详情 <span style="font-size:11px;color:var(--muted);font-weight:400">长按明细可查看</span></h3>
+    <div id="detailBody"></div>
+    <button class="btn" style="background:#f2f3f5;color:var(--text)" onclick="hideDetail()">关闭</button>
+  </div>
+</div>
 <script src="data.js"></script>
 
 <script>
@@ -216,13 +236,26 @@ const ACCOUNTS = [
 ];
 const CATS = {
   expense:[["餐饮","🍜"],["交通","🚇"],["生活缴费","💡"],["居住","🏠"],["购物","🛍️"],
-           ["医疗","💊"],["宠物","🐾"],["儿童","🧒"],["调整及其他","📦"]],
-  income:[["工资","💰"],["奖金","🎁"],["补贴","🧧"],["调整","🔧"],["其他","✨"]]
+           ["医疗","💊"],["宠物","🐾"],["儿童","🧒"],["浮亏","📉"],["调整及其他","📦"]],
+  income:[["工资","💰"],["奖金","🎁"],["补贴","🧧"],["理财收入","📈"],["浮盈","💹"],["调整","🔧"],["其他","✨"]]
 };
 let records = JSON.parse(localStorage.getItem("jz_records")||"null");
 let initials = JSON.parse(localStorage.getItem("jz_initials")||"null"); // 账户期初余额
 if(!records){ records = (typeof SEED_RECORDS!=="undefined")?SEED_RECORDS:[]; localStorage.setItem("jz_records",JSON.stringify(records)); }
 if(!initials){ initials = (typeof SEED_INIT!=="undefined")?SEED_INIT:{}; localStorage.setItem("jz_initials",JSON.stringify(initials)); }
+/* 数据迁移 v2：互转归类 + 浮盈/浮亏分类 */
+if(localStorage.getItem("jz_version")!=="2"){
+  records.forEach(r=>{
+    if(r.cat==="互转出"){r.cat="调整及其他";}
+    else if(r.cat==="互转入"){r.cat="其他";}
+    else if((r.get||"")&&false){}
+    const note=r.note||"";
+    if(r.type==="income"&&note.indexOf("浮盈")>-1&&r.cat!=="浮盈"){r.cat="浮盈";}
+    else if(r.type==="expense"&&note.indexOf("浮亏")>-1&&r.cat!=="浮亏"){r.cat="浮亏";}
+  });
+  localStorage.setItem("jz_records",JSON.stringify(records));
+  localStorage.setItem("jz_version","2");
+}
 let period = "month", pDate = new Date();
 
 function save(){localStorage.setItem("jz_records",JSON.stringify(records));}
@@ -288,14 +321,17 @@ function renderList(list){
   const groups={};list.forEach(r=>{(groups[r.date]=groups[r.date]||[]).push(r);});
   page.innerHTML=Object.entries(groups).map(([date,items])=>{
     const dExp=items.filter(r=>r.type==="expense").reduce((s,r)=>s+r.amount,0);
-    return `<div class="day-group"><div class="day-head">${date.slice(5).replace("-","月")}日 · 支出 ¥${fmt(dExp)}</div>
+    const dInc=items.filter(r=>r.type==="income").reduce((s,r)=>s+r.amount,0);
+    return `<div class="day-group"><div class="day-head">${date.slice(5).replace("-","月")}日
+      <span class="dh-exp">支出 ¥${fmt(dExp)}</span>
+      <span class="dh-inc">收入 ¥${fmt(dInc)}</span></div>
     ${items.map(r=>{
       let inner;
       if(r.type==="transfer"){
-        const dir=r.from?`转出 · ${r.from}`:`转入 · ${r.to}`;
-        inner=`<div class="emoji">${r.from?"📤":"📥"}</div>
-          <div class="info"><div class="cat">${dir}</div><div class="note">${r.note||"账户互转"}</div></div>
-          <div class="amt transfer">${r.from?"-":"+"}¥${fmt(r.amount)}<span class="acc">转账</span></div>`;
+        const label=`${r.from||"?"}>${r.to||"?"}`;
+        inner=`<div class="emoji">🔄</div>
+          <div class="info"><div class="cat">${label}</div><div class="note">${r.note||"账户互转"}</div></div>
+          <div class="amt transfer">¥${fmt(r.amount)}<span class="acc">转账</span></div>`;
       }else{
         const c=CATS[r.type].find(c=>c[0]===r.cat)||["其他","📦"];
         inner=`<div class="emoji">${c[1]}</div>
@@ -303,52 +339,76 @@ function renderList(list){
           <div class="amt ${r.type}">${r.type==="expense"?"-":"+"}¥${fmt(r.amount)}<span class="acc">${r.account}</span></div>`;
       }
       return `<div class="swipe-wrap" data-id="${r.id}">
-        <button class="swipe-del" onclick="event.stopPropagation();delRecord(${r.id})"><span class="i">🗑</span>删除</button>
+        <button class="swipe-act edit" onclick="event.stopPropagation();editRecord(${r.id})"><span class="i">✏️</span>编辑</button>
+        <button class="swipe-act del" onclick="event.stopPropagation();delRecord(${r.id})"><span class="i">🗑</span>删除</button>
         <div class="record">${inner}</div></div>`;
     }).join("")}</div>`;
   }).join("");
   initSwipe(page);
 }
 
-/* 左滑删除手势 */
+/* 左滑删除手势 + 长按显示备注 */
+let pressTimer=null;
+function showDetail(id){
+  const r=records.find(x=>x.id===id);
+  if(!r)return;
+  const typ={"expense":"支出","income":"收入","transfer":"转账"}[r.type]||"";
+  const acc=r.account||(r.from?`转出：${r.from}`:"")+(r.to?`　转入：${r.to}`:"");
+  document.getElementById("detailBody").innerHTML=
+    `<div class="d-row"><span>类型</span><b>${typ}</b></div>
+     <div class="d-row"><span>分类</span><b>${r.cat||"互转"}</b></div>
+     <div class="d-row"><span>金额</span><b style="color:var(--primary)">¥${fmt(r.amount)}</b></div>
+     <div class="d-row"><span>账户</span><b>${acc}</b></div>
+     <div class="d-row"><span>日期</span><b>${r.date}</b></div>
+     <div class="d-note">${r.note?r.note:"（无备注）"}</div>`;
+  document.getElementById("detailMask").classList.add("show");
+  if(navigator.vibrate)navigator.vibrate(30);
+}
+function hideDetail(){document.getElementById("detailMask").classList.remove("show");}
+
 function initSwipe(page){
   const wraps=[...page.querySelectorAll(".swipe-wrap")];
   wraps.forEach(wrap=>{
     const content=wrap.querySelector(".record");
-    let startX=0,startY=0,dx=0,dragging=false,lockDir=null;
+    const id=+wrap.dataset.id;
+    let startX=0,startY=0,dx=0,dragging=false,lockDir=null,moved=false;
 
     const onStart=e=>{
       const t=e.touches[0];
-      startX=t.clientX;startY=t.clientY;dx=0;dragging=true;lockDir=null;
+      startX=t.clientX;startY=t.clientY;dx=0;dragging=true;lockDir=null;moved=false;
       content.style.transition="none";
+      clearTimeout(pressTimer);
+      pressTimer=setTimeout(()=>{ if(dragging&&!moved) showDetail(id); },2000);
     };
     const onMove=e=>{
       if(!dragging)return;
       const t=e.touches[0];
       const mx=t.clientX-startX, my=t.clientY-startY;
+      if(Math.abs(mx)>6||Math.abs(my)>6){moved=true;clearTimeout(pressTimer);}
       if(lockDir===null){
         if(Math.abs(mx)<6&&Math.abs(my)<6)return;
         lockDir = Math.abs(mx)>Math.abs(my)?"x":"y";
-        if(lockDir==="y"){dragging=false;content.style.transition="";return;}
+        if(lockDir==="y"){dragging=false;clearTimeout(pressTimer);content.style.transition="";return;}
       }
       if(lockDir!=="x")return;
       e.preventDefault();
       const isOpen=wrap.classList.contains("open");
       let base=isOpen?-84:0;
-      dx=Math.max(-100,Math.min(0,base+mx));
+      dx=Math.max(-180,Math.min(0,base+mx));
       content.style.transform=`translateX(${dx}px)`;
     };
     const onEnd=()=>{
+      clearTimeout(pressTimer);
       if(!dragging){content.style.transition="";return;}
       dragging=false;
       content.style.transition="transform .22s ease";
       const isOpen=wrap.classList.contains("open");
-      let shouldOpen = isOpen ? dx < -40 : dx < -40;
+      const shouldOpen = isOpen ? dx < -60 : dx < -60;
       // 关闭其他已展开项
       wraps.forEach(w=>{if(w!==wrap&&w.classList.contains("open")){
         w.classList.remove("open");w.querySelector(".record").style.transform="";}});
       wrap.classList.toggle("open",shouldOpen);
-      content.style.transform=shouldOpen?"translateX(-84px)":"";
+      content.style.transform=shouldOpen?"translateX(-160px)":"";
     };
     content.addEventListener("touchstart",onStart,{passive:true});
     content.addEventListener("touchmove",onMove,{passive:false});
@@ -461,16 +521,40 @@ function editInitial(name){  const v=prompt(`设置「${name}」的期初余额�
   initials[name]=Math.round(n*100)/100;saveInit();renderAccounts();showToast("已更新");
 }
 
-/* ============ 记一笔 ============ */
-let curType="expense",curCat=0;
+/* ============ 记一笔 / 编辑 ============ */
+let curType="expense",curCat=0,editingId=null;
 function openSheet(){
+  editingId=null;
   document.getElementById("mask").classList.add("show");
   document.getElementById("dateInput").value=today();
+  document.querySelector(".sheet h3").textContent="记一笔";
   setType(curType);
+}
+function editRecord(id){
+  const r=records.find(x=>x.id===id);
+  if(!r)return;
+  editingId=id;
+  document.getElementById("mask").classList.add("show");
+  document.getElementById("dateInput").value=r.date;
+  document.getElementById("noteInput").value=r.note||"";
+  document.getElementById("amountInput").value=r.amount;
+  document.querySelector(".sheet h3").textContent="编辑记录";
+  if(r.type==="transfer"){
+    setType("transfer");
+    document.getElementById("fromAcc").value=r.from||"";
+    document.getElementById("toAcc").value=r.to||"";
+  }else{
+    setType(r.type);
+    const idx=CATS[r.type].findIndex(c=>c[0]===r.cat);
+    curCat=idx>=0?idx:0;
+    document.querySelectorAll("#catGrid .cat-item").forEach((el,i)=>el.classList.toggle("active",i===curCat));
+    document.getElementById("accSel").value=r.account||"";
+  }
 }
 function closeSheet(){
   document.getElementById("mask").classList.remove("show");
   document.getElementById("amountInput").value="";document.getElementById("noteInput").value="";
+  editingId=null;
 }
 function setType(t){
   curType=t;curCat=0;
@@ -494,7 +578,24 @@ function saveRecord(){
   if(!amt||amt<=0){showToast("请输入金额");return;}
   const date=document.getElementById("dateInput").value||today();
   const note=document.getElementById("noteInput").value.trim();
-  const base={id:Date.now(),amount:Math.round(amt*100)/100,note,date,ts:Date.now()};
+  const amount=Math.round(amt*100)/100;
+  if(editingId!==null){
+    const r=records.find(x=>x.id===editingId);
+    if(r){
+      r.amount=amount;r.note=note;r.date=date;
+      if(curType==="transfer"){
+        const from=document.getElementById("fromAcc").value,to=document.getElementById("toAcc").value;
+        if(from===to){showToast("转出转入不能是同一账户");return;}
+        r.type="transfer";r.from=from;r.to=to;delete r.cat;delete r.account;
+      }else{
+        r.type=curType;r.cat=CATS[curType][curCat][0];r.account=document.getElementById("accSel").value;
+        delete r.from;delete r.to;
+      }
+      save();closeSheet();render();showToast("已更新 ✓");
+    }
+    return;
+  }
+  const base={id:Date.now(),amount:amount,note,date,ts:Date.now()};
   if(curType==="transfer"){
     const from=document.getElementById("fromAcc").value,to=document.getElementById("toAcc").value;
     if(from===to){showToast("转出转入不能是同一账户");return;}

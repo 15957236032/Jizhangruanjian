@@ -1,4 +1,4 @@
-const CACHE_NAME = "jizhang-v5";
+const CACHE_NAME = "jizhang-v10";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.png", "./data.js"];
 
 self.addEventListener("install", (e) => {
