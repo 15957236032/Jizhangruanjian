@@ -324,14 +324,19 @@ function save(){localStorage.setItem("jz_records",JSON.stringify(records));}
 function saveInit(){localStorage.setItem("jz_initials",JSON.stringify(initials));}
 function fmt(n){return n.toFixed(2);}
 function accOf(n){return ACCOUNTS.find(a=>a.name===n)||{e:"📦"};}
-function today(){return new Date().toISOString().slice(0,10);}
+/* 本地时区日期字符串 YYYY-MM-DD（不要用 toISOString，会按 UTC 导致日期偏移） */
+function localDate(d){
+  d=d||new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function today(){return localDate(new Date());}
 
 /* 期间范围 */
 function periodRange(){
   const y=pDate.getFullYear(),m=pDate.getMonth();
   if(period==="month"){
     const s=new Date(y,m,1),e=new Date(y,m+1,0);
-    return [s.toISOString().slice(0,10),e.toISOString().slice(0,10)];
+    return [localDate(s),localDate(e)];
   }else if(period==="year"){
     return [`${y}-01-01`,`${y}-12-31`];
   }else{
@@ -661,6 +666,7 @@ function renderAccounts(){
         <button class="export-btn" style="margin:0" onclick="exportJSON()">💾 导出 JSON</button>
         <button class="export-btn" style="margin:0;border-color:#3a7afe;background:#eef3ff;color:#3a7afe" onclick="importJSON()">📥 导入 JSON</button>
       </div>
+      <button class="export-btn" style="margin:0;border-color:#bbb;background:#fff;color:var(--muted)" onclick="fixDates()">🛠 日期修正（时区问题）</button>
     </div>`;
 }
 function netTotal(b){
@@ -669,6 +675,24 @@ function netTotal(b){
     else s+=b[a.name]; // credit/liability 余额为负已计入
   });return s;
 }
+/* 日期修正：修复历史记录中因 UTC 时区导致偏移一天的记录 */
+function fixDates(){
+  const t=today();
+  const oldIds=records.filter(r=>r._utcBug).map(r=>r.id);
+  // 找出所有"未来日期"记录（不可能是用户真实录入的）
+  const future=records.filter(r=>r.date>t);
+  const info=`当前设备日期：${t}\n总记录：${records.length} 条\n未来日期记录：${future.length} 条\n\n`+
+    `选择操作：\n1. 确定 → 把未来日期记录改为今天\n2. 取消 → 不改动`;
+  if(!future.length){
+    showToast("没有发现异常日期 ✓");
+    return;
+  }
+  const list=future.slice(0,5).map(r=>`· ${r.date} ${r.cat||"转账"} ¥${fmt(r.amount)}`).join("\n");
+  if(!confirm(`${info}\n\n前几条：\n${list}`))return;
+  future.forEach(r=>{r.date=t;});
+  save();render();showToast(`已修正 ${future.length} 条 ✓`);
+}
+
 function exportJSON(){
   const payload={version:2,exportedAt:new Date().toISOString(),records:records,initials:initials};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
@@ -836,6 +860,7 @@ function saveRecord(){
   const date=document.getElementById("dateInput").value||today();
   const note=document.getElementById("noteInput").value.trim();
   const amount=Math.round(amt*100)/100;
+  if(!date){showToast("请选择日期");return;}
   if(editingId!==null){
     const r=records.find(x=>x.id===editingId);
     if(r){
